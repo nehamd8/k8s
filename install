@@ -1,0 +1,127 @@
+On master and worker
+#!/bin/bash
+sudo apt update -y
+sudo apt install -y docker.io
+sudo systemctl enable docker.service
+sudo hostnamectl set-hostname k8s-master
+sudo apt install apt-transport-https curl -y
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add
+echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" >> ~/kubernetes.list
+sudo mv ~/kubernetes.list /etc/apt/sources.list.d
+sudo apt update -y
+sudo apt install kubelet -y
+sudo apt install kubeadm -y
+sudo apt install kubectl -y
+sudo apt-get install -y kubernetes-cni
+sudo swapoff -a
+lsmod | grep br_netfilter
+sudo modprobe br_netfilter
+sudo sysctl net.bridge.bridge-nf-call-iptables=1
+sudo mkdir /etc/docker
+cat <<EOF | sudo tee /etc/docker/daemon.json
+{ "exec-opts": ["native.cgroupdriver=systemd"],
+"log-driver": "json-file",
+"log-opts":
+{ "max-size": "100m" },
+"storage-driver": "overlay2"
+}
+EOF
+
+
+run on master server only
+
+
+cat>km.sh
+sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+sudo ufw allow 6443
+sudo ufw allow 6443/tcp
+^c
+bash km.sh
+
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/k8s-manifests/kube-flannel-rbac.yml
+
+On worker-
+kubeadm join 172.31.30.158:6443 --token czl7u0.fu3hyw1tpinhlgl5 \
+        --discovery-token-ca-cert-hash sha256:eb07e218f282f1f5b2c663c2ed9904d3700b53ecfca8a2613f9ecdded77aaf8c
+On master-kubectl get nodes
+
+kubectl get pods --all-namespaces
+kubectl get componentstatus
+
+Dashboard Setup
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.5.0/aio/deploy/recommended.yaml
+kubectl edit service/kubernetes-dashboard -n kubernetes-dashboard
+
+replace cluster IP with NodePort
+To identify taint
+
+kubectl describe pod kubernetes-dashboard -n kubernetes-dashboard
+kubectl describe node k8s-master | grep Taints
+To remove taint
+kubectl describe node k8s-master | grep Taints
+
+kubectl taint node k8s-master node-role.kubernetes.io/master:NoSchedule-
+kubectl taint node k8s-master node-role.kubernetes.io/control-plane:NoSchedule-
+
+Creating a Service Account
+cat>admin-user.yml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kubernetes-dashboard
+
+kubectl apply -f admin-user.yml
+
+
+
+
+
+Creating a ClusterRoleBinding
+cat>ClusterRoleBinding.yml
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kubernetes-dashboard
+^c
+kubectl apply -f ClusterRoleBinding.yml
+
+Check Status
+kubectl get all -n kubernetes-dashboard
+kubectl get pods --all-namespaces
+Take PUBLIC IP :NODE port IP-
+New tab
+30180 
+Generate Token
+kubectl -n kubernetes-dashboard create token admin-user
+
+https:// 18.208.246.135:30170
+
+Create pod-
+vi pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: static-web
+  labels:
+    app: nginx
+spec:
+  containers:
+-	name: web
+                                                image: nginx
+kubectl apply -f pod.yaml
+kubectl get svc
